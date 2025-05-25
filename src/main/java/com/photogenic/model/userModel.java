@@ -1,19 +1,18 @@
 package com.photogenic.model;
 
 
+import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
-import lombok.Data;
 
-
+@Document(collection = "pgUsers")
 @Data
-@Document
-public class pgModel {
-
+public class userModel {
     @Id
     private String id;
-    private String name;
-    private String contentType;
-    private byte[] imageData;
+    private String email;
+    private String username;
+    private String password;
 }
+
 
