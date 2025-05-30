@@ -11,8 +11,8 @@ import com.photogenic.config.pgConfigRest;
 
 @Service
 public class backgroundService {
-    private static final String API_KEY = "8cdvrTCcs7kU3pVNuK8457TA";
-    private static final String API_URL = "https://api.remove.bg/v1.0/removebg";
+    private static final String API_KEY = "api key here";
+    private static final String API_URL = "url here";
 
     @Autowired
     private pgConfigRest Rest;
