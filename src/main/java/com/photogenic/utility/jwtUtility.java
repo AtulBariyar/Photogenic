@@ -40,7 +40,7 @@ public class jwtUtility {
     public boolean validateToken(String token, String username) {
         try {
             Claims claims = extractClaims(token);
-            return username.equals(claims.getSubject()) && !isTokenExpired(token);
+            return !isTokenExpired(token);
         } catch (Exception e) {
             System.out.println("JWT validation failed: " + e.getMessage());
             return false;

@@ -175,7 +175,7 @@ import java.util.Optional;
     public byte[] convertToJPG(MultipartFile file) {
         try {
             String originalFilename = file.getOriginalFilename();
-            String originalExtension = originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf(".") + 1) : "unknown";
+            String originalExtension = (originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf(".") + 1) : "unknown");
 
             BufferedImage inputImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
