@@ -17,6 +17,11 @@ public class jwtUtility {
 
     private static final long JWT_EXPIRATION = 604800000L;
     private static final long REFRESH_TOKEN_EXPIRATION = 2592000000L;
+    private static String tokenUsername="";
+
+    public String getUsername(){
+        return tokenUsername;
+    }
 
     public String generateAccessToken(String username) {
         return Jwts.builder()
@@ -39,6 +44,7 @@ public class jwtUtility {
 
     public boolean validateToken(String token, String username) {
         try {
+            tokenUsername = extractUsername(token);
             Claims claims = extractClaims(token);
             return !isTokenExpired(token);
         } catch (Exception e) {

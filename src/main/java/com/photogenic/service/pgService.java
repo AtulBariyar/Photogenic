@@ -1,8 +1,9 @@
 package com.photogenic.service;
 
-
 import com.photogenic.model.pgModel;
+import com.photogenic.model.userModel;
 import com.photogenic.repository.pgRepository;
+import com.photogenic.utility.jwtUtility;
 import net.coobird.thumbnailator.Thumbnails;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,30 +17,54 @@ import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.Image;
 import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.io.image.ImageData;
 import com.itextpdf.io.image.ImageDataFactory;
 import javax.imageio.ImageIO;
-import javax.imageio.ImageWriter;
-import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
+import com.itextpdf.kernel.geom.PageSize;
+import com.itextpdf.layout.properties.HorizontalAlignment;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
+import net.coobird.thumbnailator.geometry.Positions;
+import net.coobird.thumbnailator.filters.Caption;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
 @Service public class pgService {
+
     @Autowired
     private pgRepository imageRepository;
 
+    @Autowired
+    private userService userService;
+
+    @Autowired
+    private jwtUtility jwtUtil;
+
     public String uploadImage(@NotNull MultipartFile file) throws IOException {
+        String username=jwtUtil.getUsername();
+        userModel user = userService.getUserByUsername(username);
         pgModel image = new pgModel();
         image.setName(file.getOriginalFilename());
         image.setContentType(file.getContentType());
         image.setImageData(file.getBytes());
         pgModel savedImage = imageRepository.save(image);
+        user.getPgModel().add(savedImage);
+        userService.saveUser(user);
         return savedImage.getId();
+    }
+
+    public List<pgModel> getAllImages() {
+        String userName = jwtUtil.getUsername();
+        userModel user = userService.getUserByUsername(userName);
+        List<pgModel> all= user.getPgModel();
+        if( all != null && !all.isEmpty()){
+            return all;
+        }
+        return null;
+
     }
 
     public byte[] getImageById(String id) {
@@ -57,6 +82,10 @@ import java.util.Optional;
     }
 
     public void deleteImage(String id) {
+        String username=jwtUtil.getUsername();
+        userModel user = userService.getUserByUsername(username);
+        user.getPgModel().removeIf(x->x.getId().equals(id));
+        userService.saveUser(user);
         if (imageRepository.existsById(id)) {
             imageRepository.deleteById(id);
             System.out.println("Image deleted Successfully!!!");
@@ -77,10 +106,6 @@ import java.util.Optional;
         }
     }
 
-    public List<pgModel> getAllImages() {
-        return imageRepository.findAll();
-    }
-
     public boolean updateImageFile(String id, MultipartFile file) throws IOException {
         pgModel existingImage = imageRepository.findById(id).orElse(null);
         if (existingImage != null) {
@@ -98,91 +123,144 @@ import java.util.Optional;
             throw new IllegalArgumentException("Width and height must be positive integers.");
         }
 
-        InputStream inputStream = file.getInputStream();
+        String outputFormat = "jpeg";
+        MediaType outputMediaType = MediaType.IMAGE_JPEG;
+
+        BufferedImage originalImage = ImageIO.read(file.getInputStream());
+        if (file.getContentType() != null && file.getContentType().equalsIgnoreCase("image/png")) {
+            outputFormat = "png";
+            outputMediaType = MediaType.IMAGE_PNG;
+        }
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        Thumbnails.of(inputStream)
+        Thumbnails.of(originalImage)
                 .size(width, height)
-                .outputFormat("png")
+                .outputQuality(0.75f)
+                .outputFormat(outputFormat)
                 .toOutputStream(outputStream);
-        BufferedImage bufferedImage = Thumbnails.of(new ByteArrayInputStream(outputStream.toByteArray()))
-                .size(width, height)
-                .asBufferedImage();
 
-        System.out.println("Resized width: " + bufferedImage.getWidth() + " , Resized height: " + bufferedImage.getHeight());
+        System.out.println("Resized width: " + width + " , Resized height: " + height);
 
         byte[] resizedImageBytes = outputStream.toByteArray();
+
         return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
+                .contentType(outputMediaType)
                 .body(resizedImageBytes);
     }
 
-    public byte[] rotateImage(MultipartFile file, double angle) throws IOException {
-        BufferedImage originalImage = ImageIO.read(file.getInputStream());
-        int width = originalImage.getWidth();
-        int height = originalImage.getHeight();
-        BufferedImage rotatedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics2D = rotatedImage.createGraphics();
-        graphics2D.rotate(Math.toRadians(angle), width / 2, height / 2);
-        graphics2D.drawImage(originalImage, 0, 0, null);
-        graphics2D.dispose();
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(rotatedImage, "PNG", baos);
-        return baos.toByteArray();
-    }
+    public ResponseEntity<byte[]> rotateImage(MultipartFile file, double angle) throws IOException {
 
-    public byte[] cropImage(MultipartFile file, int x, int y, int height, int width) throws IOException {
+        String outputFormat = "jpeg";
+        MediaType outputMediaType = MediaType.IMAGE_JPEG;
+
         BufferedImage originalImage = ImageIO.read(file.getInputStream());
 
-        BufferedImage croppedImage = originalImage.getSubimage(x, y, width, height);
-
-        System.out.println("Cropped Image Size: " + croppedImage.getWidth() + "x" + croppedImage.getHeight());
-
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(croppedImage, "PNG", baos);
-        return baos.toByteArray();
-    }
-
-    public byte[] addWaterMark(MultipartFile file, String title) {
-        try {
-            BufferedImage originalImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
-            Graphics2D graphics = (Graphics2D) originalImage.getGraphics();
-
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            Font font = new Font("Lucida Handwriting", Font.ITALIC, 26);
-            graphics.setFont(font);
-
-            graphics.setColor(new Color(255, 255, 255, 150));
-
-            int stringWidth = graphics.getFontMetrics().stringWidth(title);
-            int stringHeight = graphics.getFontMetrics().getHeight();
-            int x = originalImage.getWidth() - stringWidth - 20;
-            int y = originalImage.getHeight() - stringHeight + 30;
-            graphics.drawString(title, x, y);
-            graphics.dispose();
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            ImageIO.write(originalImage, "png", outputStream);
-            return outputStream.toByteArray();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to process the image", e);
+        if (file.getContentType() != null && file.getContentType().equalsIgnoreCase("image/png")) {
+            outputFormat = "png";
+            outputMediaType = MediaType.IMAGE_PNG;
         }
 
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        Thumbnails.of(originalImage)
+                .scale(1.0)
+                .rotate(angle)
+                .outputQuality(0.75f)
+                .outputFormat(outputFormat)
+                .toOutputStream(outputStream);
+
+        System.out.println("Image rotated by: " + angle + " degrees");
+
+        byte[] rotatedImageBytes = outputStream.toByteArray();
+
+        return ResponseEntity.ok()
+                .contentType(outputMediaType)
+                .body(rotatedImageBytes);
+    }
+
+
+    public ResponseEntity<byte[]> cropImage(MultipartFile file, int x, int y,int height, int width ) throws IOException {
+
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Input file cannot be null or empty.");
+        }
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Crop coordinates and dimensions must be positive or zero for x, y.");
+        }
+        String outputFormat = "jpeg";
+        MediaType outputMediaType = MediaType.IMAGE_JPEG;
+        BufferedImage originalImage = ImageIO.read(file.getInputStream());
+        if (file.getContentType() != null && file.getContentType().equalsIgnoreCase("image/png")) {
+            outputFormat = "png";
+            outputMediaType = MediaType.IMAGE_PNG;
+        }
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        Thumbnails.of(originalImage)
+                .sourceRegion(x, y, width, height)
+                .size(width, height)
+                .outputQuality(0.75f)
+                .outputFormat(outputFormat)
+                .toOutputStream(outputStream);
+
+        System.out.println("Cropped Image Size: " + width + "x" + height);
+
+        byte[] croppedImageBytes = outputStream.toByteArray();
+
+        return ResponseEntity.ok()
+                .contentType(outputMediaType)
+                .body(croppedImageBytes);
+    }
+
+
+    public ResponseEntity<byte[]> addWaterMark(MultipartFile file, String title) {
+        try {
+            if (file == null || file.isEmpty()) {
+                throw new IllegalArgumentException("Input file cannot be null or empty.");
+            }
+            if (title == null || title.isEmpty()) {
+                throw new IllegalArgumentException("Watermark title cannot be null or empty.");
+            }
+            String outputFormat = "jpeg"; // Default to JPG
+            MediaType outputMediaType = MediaType.IMAGE_JPEG;
+            BufferedImage originalImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
+            if (file.getContentType() != null && file.getContentType().equalsIgnoreCase("image/png")) {
+                outputFormat = "png";
+                outputMediaType = MediaType.IMAGE_PNG;
+            }
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            Font font = new Font("Arial", Font.BOLD, 26);
+            Color color = new Color(255, 255, 255, 150);
+            Positions position = Positions.BOTTOM_RIGHT;
+            int insets = 20;
+            Thumbnails.of(originalImage)
+                    .scale(1.0)
+                    .addFilter(new Caption(title, font, color, position, insets))
+                    .outputQuality(0.75f)
+                    .outputFormat(outputFormat)
+                    .toOutputStream(outputStream);
+            System.out.println("Watermark added: " + title);
+            byte[] watermarkedImageBytes = outputStream.toByteArray();
+            return ResponseEntity.ok()
+                    .contentType(outputMediaType)
+                    .body(watermarkedImageBytes);
+
+        } catch (IOException e) {
+            System.err.println("Error processing image for watermarking: " + e.getMessage());
+            throw new RuntimeException("Failed to add watermark to the image", e);
+        }
     }
 
     public byte[] convertToJPG(MultipartFile file) {
         try {
             String originalFilename = file.getOriginalFilename();
-            String originalExtension = (originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf(".") + 1) : "unknown");
+//          String originalExtension = (originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf(".") + 1) : "unknown");
 
             BufferedImage inputImage = ImageIO.read(new ByteArrayInputStream(file.getBytes()));
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
             ImageIO.write(inputImage, "jpg", outputStream);
-
-
             System.out.println("Converted file extension: jpg");
 
             return outputStream.toByteArray();
@@ -191,16 +269,40 @@ import java.util.Optional;
         }
     }
 
-    public byte[] convertImageToPDF(MultipartFile file) throws IOException {
-        BufferedImage bufferedImage = ImageIO.read(file.getInputStream());
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        PdfWriter writer = new PdfWriter(byteArrayOutputStream);
-        PdfDocument pdf = new PdfDocument(writer);
-        Document document = new Document(pdf);
-        com.itextpdf.layout.element.Image pdfImage = new Image(ImageDataFactory.create(file.getBytes()));
-        document.add(pdfImage);
-        document.close();
-        return byteArrayOutputStream.toByteArray();
+
+    public ResponseEntity<byte[]> convertImageToPDF(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Input file cannot be null or empty.");
+        }
+
+        try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
+            PdfWriter writer = new PdfWriter(byteArrayOutputStream);
+            PdfDocument pdf = new PdfDocument(writer);
+            Document document = new Document(pdf, PageSize.A4);
+
+            ImageData imageData = ImageDataFactory.create(file.getBytes());
+            Image pdfImage = new Image(imageData);
+
+            pdfImage.setAutoScale(true);
+            pdfImage.setHorizontalAlignment(HorizontalAlignment.CENTER);
+
+//             float documentWidth = document.getPageEffectiveArea().getWidth();
+//             pdfImage.setWidth(documentWidth);
+//             pdfImage.setAutoScaleHeight(true);
+
+            document.add(pdfImage);
+            document.close();
+            pdf.close();
+
+            byte[] pdfBytes = byteArrayOutputStream.toByteArray();
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+        } catch (IOException e) {
+            System.err.println("Error converting image to PDF: " + e.getMessage());
+            throw new RuntimeException("Failed to convert image to PDF", e);
+        }
     }
 
 
@@ -230,28 +332,37 @@ import java.util.Optional;
         return baos.toByteArray();
     }
 
-    public byte[] compressImage(MultipartFile file, float size) throws IOException {
-        if (size < 0.0f || size > 1.0f) {
-            throw new IllegalArgumentException("Quality must be between 0.0 and 1.0");
+    public ResponseEntity<byte[]> compressImage(MultipartFile file, float quality) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Input file cannot be null or empty.");
         }
 
+        if (quality < 0.0f || quality > 1.0f) {
+            throw new IllegalArgumentException("Quality must be between 0.0 and 1.0.");
+        }
+
+        String outputFormat = "jpeg";
+        MediaType outputMediaType = MediaType.IMAGE_JPEG;
+
         BufferedImage originalImage = ImageIO.read(file.getInputStream());
+        if (file.getContentType() != null && file.getContentType().equalsIgnoreCase("image/png")) {
+            outputFormat = "png";
+            outputMediaType = MediaType.IMAGE_PNG;
+        }
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        Thumbnails.of(originalImage)
+                .scale(1.0)
+                .outputQuality(quality)
+                .outputFormat(outputFormat)
+                .toOutputStream(outputStream);
 
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        System.out.println("Image compressed with quality: " + quality);
 
-        ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+        byte[] compressedImageBytes = outputStream.toByteArray();
 
-        JPEGImageWriteParam jpegWriteParam = new JPEGImageWriteParam(null);
-        jpegWriteParam.setCompressionMode(JPEGImageWriteParam.MODE_EXPLICIT);
-        jpegWriteParam.setCompressionQuality(size);
-        writer.setOutput(ImageIO.createImageOutputStream(byteArrayOutputStream));
-
-        writer.write(null, new javax.imageio.IIOImage(originalImage, null, null), jpegWriteParam);
-
-        writer.dispose();
-
-        return byteArrayOutputStream.toByteArray();
+        return ResponseEntity.ok()
+                .contentType(outputMediaType)
+                .body(compressedImageBytes);
     }
-
 
 }

@@ -11,12 +11,20 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import com.photogenic.security.jwtFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @EnableWebSecurity
 @Configuration
 public class securityConfig {
     @Autowired
-    private jwtFilter jwtFilter;
+    private final jwtFilter jwtFilter;
+
+    private final CorsConfigurationSource corsConfigurationSource;
+
+    public securityConfig(jwtFilter jwtFilter, CorsConfigurationSource corsConfigurationSource) {
+        this.jwtFilter = jwtFilter;
+        this.corsConfigurationSource = corsConfigurationSource;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -26,6 +34,7 @@ public class securityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                                 .requestMatchers("/auth/**").permitAll()

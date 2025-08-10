@@ -3,6 +3,7 @@ package com.photogenic.service;
 
 import com.photogenic.dto.userLoginDto;
 import com.photogenic.dto.userRegisterDto;
+import com.photogenic.model.pgModel;
 import com.photogenic.model.userModel;
 import com.photogenic.utility.jwtUtility;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,11 +27,20 @@ public class userService {
         return existingUser != null;
     }
 
+    public userModel getUserByUsername(String username) {
+        return userRepository.findByUsername(username);
+    }
+
+    public void saveUser(userModel user){
+         userRepository.save(user);
+        }
+
     // Register a new user
     public userModel registerUser(userRegisterDto userRegisterDto) {
         userModel userEntity = new userModel();
         userEntity.setUsername(userRegisterDto.getUsername());
         userEntity.setPassword(userRegisterDto.getPassword());
+        userEntity.setEmail(userRegisterDto.getEmail());
         return userRepository.save(userEntity);
     }
 
@@ -46,12 +56,13 @@ public class userService {
             }
 
             String accessToken = jwtUtility.generateAccessToken(user.getUsername());
-            String refreshToken = jwtUtility.generateRefreshToken(user.getUsername());
+            //String refreshToken = jwtUtility.generateRefreshToken(user.getUsername());
 
-            return "Login successful! \n Access Token: "+accessToken + " \nRefresh Token: " + refreshToken;
+            return "Login successful! \n Access Token :"+accessToken;
         } catch (Exception e) {
             e.printStackTrace();
             return "Login failed due to an error.";
         }
     }
 }
+//+ " \nRefresh Token:  + refreshToken"

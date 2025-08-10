@@ -4,7 +4,6 @@ import com.photogenic.service.backgroundService;
 import com.photogenic.service.pgService;
 import com.photogenic.model.pgModel;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.util.List;
+
 
 @RestController
 @RequestMapping("/img/")
@@ -23,6 +23,8 @@ public class pgController {
 
         @Autowired
         private backgroundService backgroundRemovalService;
+
+
 
         @PostMapping("/uploadImg")
         public ResponseEntity<?> uploadImage(@RequestParam("file") MultipartFile file) throws IOException {
@@ -75,10 +77,13 @@ public class pgController {
         @GetMapping("/listAll")
         public ResponseEntity<List<pgModel>> listImages(){
             List<pgModel> images=imageService.getAllImages();
-            return ResponseEntity.ok(images);
+            if(images != null) {
+                return ResponseEntity.ok(images);
+            }
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
 
-        @PostMapping(value = "/resizeImg", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        @PostMapping(value = "/resize", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         public ResponseEntity<byte[]> resizeImage(@RequestParam("file") MultipartFile file,
                                                   @RequestParam("width") int width,
                                                   @RequestParam("height") int height) {
@@ -91,28 +96,21 @@ public class pgController {
             }
         }
 
-        @PostMapping("/rotateImg")
+        @PostMapping("/rotate")
         public ResponseEntity<byte[]> rotateImage(@RequestParam("file") MultipartFile file,@RequestParam("angle") double angle) throws IOException {
-            byte[] rotatedImage = imageService.rotateImage(file, angle);
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Content-Type", "image/png");
-            return new ResponseEntity<>(rotatedImage, headers, HttpStatus.OK);
+            return imageService.rotateImage(file, angle);
         }
 
-        @PostMapping("/cropImg")
+        @PostMapping("/crop")
         public ResponseEntity<byte[]> cropImage(@RequestParam("file") MultipartFile file,@RequestParam("x") int x,@RequestParam("y") int y,@RequestParam("height") int height,@RequestParam("width") int width) throws IOException {
-            byte[] croppedImage = imageService.cropImage(file, x, y, height, width);
-            return  ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_PNG)
-                    .body(croppedImage);
+            return imageService.cropImage(file, x, y, height, width);
+
         }
 
-        @PostMapping("/addWaterMark")
+        @PostMapping("/watermark")
         public ResponseEntity<byte[]> addWaterMark(@RequestParam("file") MultipartFile file,@RequestParam("title") String title){
-            byte[] waterMarkedImage=imageService.addWaterMark(file,title);
-            return ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_PNG)
-                    .body(waterMarkedImage);
+            return imageService.addWaterMark(file,title);
+
         }
         @PostMapping("/convertToJPG")
         public ResponseEntity<byte[]> convertToJPG(@RequestParam("file") MultipartFile file){
@@ -124,16 +122,10 @@ public class pgController {
 
         @PostMapping("/convertImageToPDF")
         public ResponseEntity<byte[]> convertImageToPDF(MultipartFile file) throws IOException {
-            byte[] pdfBytes = imageService.convertImageToPDF(file);
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "inline; filename=image.pdf");
-            headers.add("Content-Type", "application/pdf");
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(pdfBytes);
+            return imageService.convertImageToPDF(file);
         }
 
-        @PostMapping("/mirrorImage")
+        @PostMapping("/mirror")
         public ResponseEntity<byte[]> mirrorImage(@RequestParam("file") MultipartFile file,@RequestParam("direction") String direction) throws IOException{
             byte[] mirroredImg = imageService.mirrorImage(file, direction);
             return ResponseEntity.ok()
@@ -141,25 +133,27 @@ public class pgController {
                     .body(mirroredImg);
         }
 
-        @PostMapping("/compressImage")
+        @PostMapping("/compress")
         public ResponseEntity<byte[]> compressImage(@RequestParam("file") MultipartFile file,@RequestParam("size") float size) throws IOException {
-            byte[] compressedImg = imageService.compressImage(file,size);
-            return ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_JPEG)
-                    .body(compressedImg);
+            return imageService.compressImage(file,size);
+
         }
 
-        @PostMapping(value = "/remove-background", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-        public ResponseEntity<byte[]> removeBackground(@RequestParam("file") MultipartFile file) {
-            try {
-                byte[] result = backgroundRemovalService.removeBackground(file);
-                return ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
-                        .body(result);
-            } catch (IOException e) {
-                return ResponseEntity.status(500).body(("Error: " + e.getMessage()).getBytes());
-            }
+    @PostMapping(value = "/bgremove", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<byte[]> removeBackground(@RequestParam("file") MultipartFile file) {
+        try {
+            return backgroundRemovalService.removeBackground(file);
+        } catch (IOException e) {
+            return ResponseEntity.status(500)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("Error processing background removal: " + e.getMessage()).getBytes());
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid input for background removal: " + e.getMessage());
+            return ResponseEntity.status(400)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("Invalid input: " + e.getMessage()).getBytes());
         }
-
     }
+
+}
 
